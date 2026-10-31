@@ -1,0 +1,185 @@
+// Robot runtime <-> site gateway protocol (design §5-§8, §11).
+//
+// Control messages (open, reset, invalidate, close) use unary RPCs so they never queue
+// behind observation payloads on the data stream.
+syntax = "proto3";
+
+package neura.v1;
+
+import "neura/v1/capture.proto";
+import "neura/v1/common.proto";
+
+service RobotGateway {
+  // Request a lease for this robot. Returns BUSY (LEASE_BUSY) if another session holds it.
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+  // Renew the lease and exchange link-timing measurements.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  // Session control: epoch changes, invalidation and close.
+  rpc Control(ControlRequest) returns (ControlResponse);
+  // Observations up, action chunks down. One stream per session.
+  rpc Stream(stream RobotMessage) returns (stream GatewayMessage);
+  // Which revision this robot should run, with its contract documents, so the robot verifies
+  // what it will run itself (design §16). The robot switches at its own task boundary.
+  rpc GetAssignment(GetAssignmentRequest) returns (Assignment);
+}
+
+message GetAssignmentRequest {}
+
+message Assignment {
+  // Empty when no deployment includes this robot.
+  string revision_id = 1;
+  // Contract documents by role (model_artifact, robot_profile, execution_profile), as JSON.
+  map<string, bytes> documents = 2;
+  // What to record while running this revision, if the deployment captures episodes.
+  CaptureSettings capture = 3;
+}
+
+message OpenSessionRequest {
+  ProtocolVersion protocol_version = 1;
+  // Robot identity is taken from the mTLS client certificate; this is informational.
+  string robot_id = 2;
+  // The deployment revision the robot expects to run.
+  string revision_id = 3;
+  string artifact_digest = 4;
+  string execution_profile_digest = 5;
+  string robot_profile_digest = 6;
+}
+
+message OpenSessionResponse {
+  oneof result {
+    SessionAccepted accepted = 1;
+    Reason rejected = 2;
+  }
+}
+
+message SessionAccepted {
+  string session_id = 1;
+  uint64 lease_generation = 2;
+  // Lease time to live; the robot must heartbeat well within it.
+  uint64 lease_ttl_us = 3;
+  // Maximum serialized size of any RobotMessage the gateway will accept.
+  uint32 max_message_bytes = 4;
+}
+
+message HeartbeatRequest {
+  string session_id = 1;
+  uint64 lease_generation = 2;
+  // Robot monotonic time when sent; echoed back so the robot can measure round-trip time on
+  // its own clock.
+  uint64 robot_send_time_us = 3;
+  // The robot's current p99 round-trip time to the gateway, measured on its own clock. A
+  // duration, so it is meaningful on the gateway even though the clocks differ (design §8).
+  uint64 rtt_p99_us = 4;
+  // Median of the robot's most recent round-trip times. Tracks the current link quickly; used
+  // for per-request timing, while rtt_p99_us is used for capacity planning.
+  uint64 rtt_recent_us = 5;
+  // The robot runtime's own view, for status reporting only: Ready, Armed, Running, Waiting,
+  // Faulted. The gateway never makes decisions from it.
+  string runtime_state = 6;
+  string fault_reason = 7;
+  uint64 dispatched_actions = 8;
+  uint64 task_epoch = 9;
+  // Actions queued on the robot (its buffer level), for status reporting only.
+  uint64 queued_actions = 10;
+}
+
+message HeartbeatResponse {
+  oneof result {
+    HeartbeatAck ack = 1;
+    Reason rejected = 2;
+  }
+}
+
+message HeartbeatAck {
+  uint64 robot_send_time_us = 1;
+  uint64 lease_remaining_us = 2;
+}
+
+message ControlRequest {
+  Envelope envelope = 1;
+  oneof command {
+    // The robot advanced its task epoch; the gateway cancels queued work for older epochs.
+    EpochAdvanced epoch_advanced = 2;
+    // Drop all queued and in-flight requests for this session.
+    Invalidate invalidate = 3;
+    // End the session and release the lease.
+    Close close = 4;
+  }
+}
+
+message EpochAdvanced {
+  uint64 previous_epoch = 1;
+  Reason cause = 2;
+}
+
+message Invalidate {
+  Reason cause = 1;
+}
+
+message Close {
+  Reason cause = 1;
+}
+
+message ControlResponse {
+  oneof result {
+    ControlAck ack = 1;
+    Reason rejected = 2;
+  }
+}
+
+message ControlAck {
+  uint64 task_epoch = 1;
+}
+
+message RobotMessage {
+  oneof body {
+    Observation observation = 1;
+  }
+}
+
+message GatewayMessage {
+  oneof body {
+    ActionChunk action_chunk = 1;
+    RequestRejected rejected = 2;
+  }
+}
+
+// One observation, sent when the robot's queued actions fall to the refill threshold (§8).
+message Observation {
+  Envelope envelope = 1;
+  // Anchor index: the first action index the resulting chunk covers (§5.1). For replace,
+  // blend and rtc merges it is the action cursor at capture; for append it is the index just
+  // after the last queued action.
+  uint64 anchor_index = 2;
+  // Actions still queued at send time.
+  uint32 queued_actions = 3;
+  // Relative budget: microseconds until the robot's queue starves, minus its margin (§8).
+  uint64 budget_us = 4;
+  // Robot monotonic time the observation was assembled.
+  uint64 capture_time_us = 5;
+  // Named state tensors, matching the artifact's state inputs.
+  map<string, Tensor> state = 6;
+  repeated Image images = 7;
+  // Language instruction, if the model is language conditioned.
+  string instruction = 8;
+  // For rtc merge mode: the frozen prefix of actions the robot will execute regardless (§5.3),
+  // shape [k, action_dim] in the model's action order and units.
+  Tensor frozen_prefix = 9;
+}
+
+message ActionChunk {
+  // Echoes the request's identity exactly.
+  Envelope envelope = 1;
+  // Index of the first action in `actions`; equals the request's anchor_index (§5.1).
+  uint64 start_index = 2;
+  // Shape [chunk_length, action_dim], in the artifact's declared action order and units.
+  Tensor actions = 3;
+  PayloadDigest actions_digest = 4;
+  // Opaque reference to the worker trace for this inference.
+  string trace_id = 5;
+}
+
+message RequestRejected {
+  Envelope envelope = 1;
+  Reason reason = 2;
+}
