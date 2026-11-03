@@ -10,7 +10,7 @@ record of every decision when something goes wrong.
 
 [![CI](https://github.com/rkd0608/neura-robot/actions/workflows/ci.yml/badge.svg)](https://github.com/rkd0608/neura-robot/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python 3.10–3.13](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue.svg)](pyproject.toml)
+[![Python 3.10–3.14](https://img.shields.io/badge/python-3.10%E2%80%933.14-blue.svg)](pyproject.toml)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#project-status)
 
 [Quickstart](#quickstart) · [Set up](#set-up-your-machine) · [Try it without hardware](#try-it-without-hardware) · [Bring your policy](#bring-your-policy) · [Safety model](#what-the-runtime-guarantees) · [Tests](#run-the-tests) · [Docs](docs/)
@@ -404,7 +404,7 @@ make help          # every task
 
 `pytest packages/neura-runtime` runs one package; `pytest -k incident` runs by name. Tests treat
 warnings as errors, and the timing-sensitive ones assume the machine isn't busy with something
-else. CI runs `make check` on Python 3.10 to 3.13 on x86-64 and arm64, the extras on 3.12, the
+else. CI runs `make check` on Python 3.10 to 3.14 on x86-64 and arm64, the extras on 3.12, the
 Docker tests, and an install of the built wheel from scratch.
 
 ## Troubleshooting
@@ -440,7 +440,7 @@ with its output.
 
 | | |
 |---|---|
-| Python | 3.10, 3.11, 3.12, 3.13 (LeRobot extras: 3.12+) |
+| Python | 3.10, 3.11, 3.12, 3.13, 3.14 (LeRobot extras: 3.12+) |
 | OS | Linux on x86-64 and arm64 (tested in CI on both; not yet on a Jetson); macOS for development |
 | Robots | SO-101 (LeRobot driver), ROS 2 position-controlled arms (tested on Jazzy; the relay is written for Humble's Python 3.10 too), Universal Robots e-Series through the official driver (tested on URSim), simulated: Franka Panda, UR5e, Kinova Gen3, xArm7, SO-ARM100, ALOHA |
 | Policy servers | `neura-robot serve`, openpi, LeRobot async inference |

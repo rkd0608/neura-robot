@@ -18,7 +18,7 @@ All notable changes to neura-robot. The format follows
 - Incident records: the last moments of a robot's runtime as MCAP, written on a fault or on
   request, and `neura-robot replay` to run one back through a fresh runtime.
 - The ROS 2 relay node, an SO-101 servo-bus emulator, and the ALOHA tasks in MuJoCo.
-- Python 3.10 to 3.13, on x86-64 and arm64.
+- Python 3.10 to 3.14, on x86-64 and arm64.
 - Simulated arms from MuJoCo Menagerie (Franka Panda, UR5e, Kinova Gen3, xArm7, SO-ARM100) as
   `neura-arm` arms (`type: mujoco`), their contracts inferred from the model and the policy.
 - Recorded robots (`type: recorded`): an episode of a real arm's LeRobot dataset, from the Hugging
